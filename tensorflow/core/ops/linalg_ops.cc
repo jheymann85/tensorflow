@@ -109,6 +109,36 @@ Status SelfAdjointEigV2ShapeFn(InferenceContext* c) {
   return Status::OK();
 }
 
+// Input is [...,N,N];[...,N,N]. Outputs are:
+//   [...,N];[0], if compute_v is false,
+//   [...,N];[...,N,N], if compute_v is true.
+Status GeneralizedSelfAdjointEigShapeFn(InferenceContext* c) {
+  ShapeHandle input_lhs;
+  TF_RETURN_IF_ERROR(MakeBatchSquareMatrix(c, c->input(0), &input_lhs));
+  ShapeHandle input_rhs;
+  TF_RETURN_IF_ERROR(MakeBatchSquareMatrix(c, c->input(1), &input_rhs));
+  // Make sure the inputs have the same shape
+  TF_RETURN_IF_ERROR(c->Merge(input_lhs, input_rhs, &input_lhs));
+
+  DimensionHandle n;
+  TF_RETURN_IF_ERROR(c->Merge(c->Dim(input_lhs, -2), c->Dim(input_lhs, -1), &n));
+  ShapeHandle batch_shape;
+  TF_RETURN_IF_ERROR(c->Subshape(input_lhs, 0, -2, &batch_shape));
+  ShapeHandle e_shape;
+  TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Vector(n), &e_shape));
+  c->set_output(0, e_shape);
+  bool compute_v;
+  TF_RETURN_IF_ERROR(c->GetAttr("compute_v", &compute_v));
+  if (compute_v) {
+    ShapeHandle v_shape;
+    TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Matrix(n, n), &v_shape));
+    c->set_output(1, v_shape);
+  } else {
+    c->set_output(1, c->Vector(0ll));
+  }
+  return Status::OK();
+}
+
 // Input is [...,M,N].
 // First and second outputs are:
 //   [...,M,M]; [...,M,N], if full_matrices is true,
@@ -318,7 +348,7 @@ REGISTER_OP("SelfAdjointEigV2")
     .Output("e: T")
     .Output("v: T")
     .Attr("compute_v: bool = True")
-    .Attr("T: {double, float}")
+    .Attr("T: {double, float, complex64, complex128}")
     .SetShapeFn(SelfAdjointEigV2ShapeFn)
     .Doc(R"doc(
 Computes the eigen decomposition of one or more square self-adjoint matrices.
@@ -339,6 +369,97 @@ compute_v: If `True` then eigenvectors will be computed and returned in `v`.
   Otherwise, only the eigenvalues will be computed.
 e: Eigenvalues. Shape is `[N]`.
 v: Eigenvectors. Shape is `[N, N]`.
+)doc");
+
+REGISTER_OP("Eig")
+    .Input("input: T")
+    .Output("e: K")
+    .Output("v: K")
+    .Attr("compute_v: bool = True")
+    .Attr("T: {float, double}")
+    .Attr("K: {complex64, complex128}")
+    .SetShapeFn(SelfAdjointEigV2ShapeFn)
+    .Doc(R"doc(
+Computes the Eigen Decomposition of of one or more real square matrices.
+
+Computes the generalized eigenvalues and (optionally) eigenvectors of each
+inner matrices in `input` such that
+`input[..., :, :] = v[..., :, :] * diag(e[..., :])`.
+
+```prettyprint
+# input is a tensor.
+# e is a tensor of eigenvalues.
+# v is a tensor of eigenvectors.
+e, v = eig(input)
+e = eig(input, compute_v=False)
+```
+
+input: `Tensor` of shape `[..., N, N]`.
+compute_v: If `True` then eigenvectors will be computed and returned in `v`.
+  Otherwise, only the eigenvalues will be computed.
+e: Eigenvalues. Shape is `[..., N]`.
+v: Eigenvectors. Shape is `[..., N, N]`.
+)doc");
+
+REGISTER_OP("ComplexEig")
+    .Input("input: T")
+    .Output("e: T")
+    .Output("v: T")
+    .Attr("compute_v: bool = True")
+    .Attr("T: {complex64, complex128}")
+    .SetShapeFn(SelfAdjointEigV2ShapeFn)
+    .Doc(R"doc(
+Computes the Eigen Decomposition of of one or more complex square matrices.
+
+Computes the generalized eigenvalues and (optionally) eigenvectors of each
+inner matrices in `input` such that
+`input[..., :, :] = v[..., :, :] * diag(e[..., :])`.
+
+```prettyprint
+# input is a tensor.
+# e is a tensor of eigenvalues.
+# v is a tensor of eigenvectors.
+e, v = complex_eig(input)
+e = complex_eig(input, compute_v=False)
+```
+
+input: `Tensor` of shape `[..., N, N]`.
+compute_v: If `True` then eigenvectors will be computed and returned in `v`.
+  Otherwise, only the eigenvalues will be computed.
+e: Eigenvalues. Shape is `[..., N]`.
+v: Eigenvectors. Shape is `[..., N, N]`.
+)doc");
+
+REGISTER_OP("GeneralizedSelfAdjointEig")
+    .Input("a: T")
+    .Input("b: T")
+    .Output("e: T")
+    .Output("v: T")
+    .Attr("compute_v: bool = True")
+    .Attr("T: {double, float, complex64, complex128}")
+    .SetShapeFn(GeneralizedSelfAdjointEigShapeFn)
+    .Doc(R"doc(
+Computes the Generalized Eigen Decomposition of of one or more square matrices.
+
+Computes the generalized eigenvalues and (optionally) eigenvectors of each
+inner matrices in `input` such that
+`A[..., :, :] = B[..., :, :]v[..., :, :] * diag(e[..., :])`.
+
+```prettyprint
+# a is a tensor.
+# b is a tensor.
+# e is a tensor of eigenvalues.
+# v is a tensor of eigenvectors.
+e, v = generalized_self_adjoint_eig(a, b)
+e = generalized_self_adjoint_eig(a, b, compute_v=False)
+```
+
+a: `Tensor` of shape `[..., N, N]`.
+b: `Tensor` of shape `[..., N, N]`
+compute_v: If `True` then eigenvectors will be computed and returned in `v`.
+  Otherwise, only the eigenvalues will be computed.
+e: Eigenvalues. Shape is `[..., N]`.
+v: Eigenvectors. Shape is `[..., N, N]`.
 )doc");
 
 REGISTER_OP("MatrixSolve")

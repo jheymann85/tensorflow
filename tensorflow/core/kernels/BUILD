@@ -1855,6 +1855,8 @@ cc_library(
         ":qr_op",
         ":self_adjoint_eig_op",
         ":self_adjoint_eig_v2_op",
+        ":generalized_self_adjoint_eig_op",
+        ":eig_op",
         ":svd_op",
     ],
 )
@@ -1894,6 +1896,24 @@ tf_kernel_library(
 tf_kernel_library(
     name = "self_adjoint_eig_v2_op",
     prefix = "self_adjoint_eig_v2_op",
+    deps = LINALG_DEPS,
+)
+
+tf_kernel_library(
+    name = "generalized_self_adjoint_eig_op",
+    prefix = "generalized_self_adjoint_eig_op",
+    deps = LINALG_DEPS,
+)
+
+tf_kernel_library(
+    name = "eig_op",
+    prefix = "eig_op",
+    deps = LINALG_DEPS,
+)
+
+tf_kernel_library(
+    name = "complex_eig_op",
+    prefix = "complex_eig_op",
     deps = LINALG_DEPS,
 )
 

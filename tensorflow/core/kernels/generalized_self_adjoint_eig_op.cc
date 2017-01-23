@@ -28,11 +28,11 @@ limitations under the License.
 namespace tensorflow {
 
 template <class Scalar>
-class SelfAdjointEigV2Op : public LinearAlgebraOp<Scalar> {
+class GeneralizedSelfAdjointEigOp : public LinearAlgebraOp<Scalar> {
  public:
   typedef LinearAlgebraOp<Scalar> Base;
 
-  explicit SelfAdjointEigV2Op(OpKernelConstruction* context) : Base(context) {
+  explicit GeneralizedSelfAdjointEigOp(OpKernelConstruction* context) : Base(context) {
     OP_REQUIRES_OK(context, context->GetAttr("compute_v", &compute_v_));
   }
 
@@ -52,6 +52,20 @@ class SelfAdjointEigV2Op : public LinearAlgebraOp<Scalar> {
     }
   }
 
+  void ValidateInputMatrixShapes(
+      OpKernelContext* context,
+      const TensorShapes& input_matrix_shapes) const final {
+    OP_REQUIRES(context, input_matrix_shapes.size() == 2,
+                errors::InvalidArgument("Expected two input matrices, got %d.",
+                                        input_matrix_shapes.size()));
+    OP_REQUIRES(context, input_matrix_shapes[0] == input_matrix_shapes[1],
+                errors::InvalidArgument(
+                    "Inputs (a and b) must have the same shape."));
+    OP_REQUIRES(context,
+                TensorShapeUtils::IsSquareMatrix(input_matrix_shapes[0]),
+                errors::InvalidArgument("Inputs must be a square matrices."));
+  }
+
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
                      MatrixMaps* outputs) final {
     const int64 rows = inputs[0].rows();
@@ -61,13 +75,14 @@ class SelfAdjointEigV2Op : public LinearAlgebraOp<Scalar> {
       return;
     }
 
-    Eigen::SelfAdjointEigenSolver<Matrix> eig(
-        inputs[0],
+    Eigen::GeneralizedSelfAdjointEigenSolver<Matrix> eig(
+        inputs[0], inputs[1],
         compute_v_ ? Eigen::ComputeEigenvectors : Eigen::EigenvaluesOnly);
     OP_REQUIRES(
         context, eig.info() == Eigen::Success,
-        errors::InvalidArgument("Self Adjoint Eigen decomposition was not "
-                                "successful. The input might not be valid."));
+        errors::InvalidArgument("Generalized Self Adjoint Eigen decomposition"
+                                "was not successful."
+                                "The input might not be valid."));
 
     outputs->at(0) = eig.eigenvalues();
     if (compute_v_) {
@@ -79,11 +94,12 @@ class SelfAdjointEigV2Op : public LinearAlgebraOp<Scalar> {
   bool compute_v_;
 };
 
-REGISTER_LINALG_OP("SelfAdjointEigV2", (SelfAdjointEigV2Op<float>), float);
-REGISTER_LINALG_OP("SelfAdjointEigV2", (SelfAdjointEigV2Op<double>), double);
-REGISTER_LINALG_OP("SelfAdjointEigV2", (SelfAdjointEigV2Op<complex64>), complex64);
-REGISTER_LINALG_OP("SelfAdjointEigV2", (SelfAdjointEigV2Op<complex128>), complex128);
-REGISTER_LINALG_OP("BatchSelfAdjointEigV2", (SelfAdjointEigV2Op<float>), float);
-REGISTER_LINALG_OP("BatchSelfAdjointEigV2", (SelfAdjointEigV2Op<double>),
-                   double);
+REGISTER_LINALG_OP("GeneralizedSelfAdjointEig",
+  (GeneralizedSelfAdjointEigOp<float>), float);
+REGISTER_LINALG_OP("GeneralizedSelfAdjointEig",
+  (GeneralizedSelfAdjointEigOp<double>), double);
+REGISTER_LINALG_OP("GeneralizedSelfAdjointEig",
+  (GeneralizedSelfAdjointEigOp<complex64>), complex64);
+REGISTER_LINALG_OP("GeneralizedSelfAdjointEig",
+  (GeneralizedSelfAdjointEigOp<complex128>), complex128);
 }  // namespace tensorflow

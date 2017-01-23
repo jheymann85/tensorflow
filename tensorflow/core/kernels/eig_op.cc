@@ -28,11 +28,11 @@ limitations under the License.
 namespace tensorflow {
 
 template <class Scalar>
-class SelfAdjointEigV2Op : public LinearAlgebraOp<Scalar> {
+class EigOp : public LinearAlgebraOp<Scalar> {
  public:
   typedef LinearAlgebraOp<Scalar> Base;
 
-  explicit SelfAdjointEigV2Op(OpKernelConstruction* context) : Base(context) {
+  explicit EigOp(OpKernelConstruction* context) : Base(context) {
     OP_REQUIRES_OK(context, context->GetAttr("compute_v", &compute_v_));
   }
 
@@ -61,12 +61,12 @@ class SelfAdjointEigV2Op : public LinearAlgebraOp<Scalar> {
       return;
     }
 
-    Eigen::SelfAdjointEigenSolver<Matrix> eig(
+    Eigen::EigenSolver<Matrix> eig(
         inputs[0],
         compute_v_ ? Eigen::ComputeEigenvectors : Eigen::EigenvaluesOnly);
     OP_REQUIRES(
         context, eig.info() == Eigen::Success,
-        errors::InvalidArgument("Self Adjoint Eigen decomposition was not "
+        errors::InvalidArgument("Eigen decomposition was not "
                                 "successful. The input might not be valid."));
 
     outputs->at(0) = eig.eigenvalues();
@@ -79,11 +79,61 @@ class SelfAdjointEigV2Op : public LinearAlgebraOp<Scalar> {
   bool compute_v_;
 };
 
-REGISTER_LINALG_OP("SelfAdjointEigV2", (SelfAdjointEigV2Op<float>), float);
-REGISTER_LINALG_OP("SelfAdjointEigV2", (SelfAdjointEigV2Op<double>), double);
-REGISTER_LINALG_OP("SelfAdjointEigV2", (SelfAdjointEigV2Op<complex64>), complex64);
-REGISTER_LINALG_OP("SelfAdjointEigV2", (SelfAdjointEigV2Op<complex128>), complex128);
-REGISTER_LINALG_OP("BatchSelfAdjointEigV2", (SelfAdjointEigV2Op<float>), float);
-REGISTER_LINALG_OP("BatchSelfAdjointEigV2", (SelfAdjointEigV2Op<double>),
-                   double);
+template <class Scalar>
+class ComplexEigOp : public LinearAlgebraOp<Scalar> {
+ public:
+  typedef LinearAlgebraOp<Scalar> Base;
+
+  explicit ComplexEigOp(OpKernelConstruction* context) : Base(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("compute_v", &compute_v_));
+  }
+
+  using TensorShapes = typename Base::TensorShapes;
+  using Matrix = typename Base::Matrix;
+  using MatrixMaps = typename Base::MatrixMaps;
+  using ConstMatrixMap = typename Base::ConstMatrixMap;
+  using ConstMatrixMaps = typename Base::ConstMatrixMaps;
+
+  TensorShapes GetOutputMatrixShapes(
+      const TensorShapes& input_matrix_shapes) const final {
+    int64 n = input_matrix_shapes[0].dim_size(0);
+    if (compute_v_) {
+      return TensorShapes({TensorShape({n}), TensorShape({n, n})});
+    } else {
+      return TensorShapes({TensorShape({n})});
+    }
+  }
+
+  void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
+                     MatrixMaps* outputs) final {
+    const int64 rows = inputs[0].rows();
+    if (rows == 0) {
+      // If X is an empty matrix (0 rows, 0 col), X * X' == X.
+      // Therefore, we return X.
+      return;
+    }
+
+    Eigen::ComplexEigenSolver<Matrix> eig(
+        inputs[0],
+        compute_v_ ? Eigen::ComputeEigenvectors : Eigen::EigenvaluesOnly);
+    OP_REQUIRES(
+        context, eig.info() == Eigen::Success,
+        errors::InvalidArgument("Eigen decomposition was not "
+                                "successful. The input might not be valid."));
+
+    outputs->at(0) = eig.eigenvalues();
+    if (compute_v_) {
+      outputs->at(1) = eig.eigenvectors();
+    }
+  }
+
+ private:
+  bool compute_v_;
+};
+
+//REGISTER_COMPLEX_OUTPUT_LINALG_OP("Eig", (EigOp<float>), float, complex64);
+//REGISTER_COMPLEX_OUTPUT_LINALG_OP("Eig", (EigOp<double>), double, complex128);
+REGISTER_LINALG_OP("ComplexEig", (ComplexEigOp<complex64>), complex64);
+REGISTER_LINALG_OP("ComplexEig", (ComplexEigOp<complex128>), complex128);
+
 }  // namespace tensorflow

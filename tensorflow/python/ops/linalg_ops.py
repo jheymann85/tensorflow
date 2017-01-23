@@ -229,6 +229,70 @@ def self_adjoint_eigvals(tensor, name=None):
   return e
 
 
+def generalized_self_adjoint_eig(a, b, name=None):
+  """Computes the eigen decomposition of a batch of self-adjoint matrices.
+
+  Computes the generalized eigenvalues and eigenvectors of the innermost
+  N-by-N matrices of `a` and `b` such that
+  `a[...,:,:] * v[..., :,i] = e[..., i] * b[..., :, :] * v[...,:,i]`, for i=0...N-1.
+
+  Args:
+    a: `Tensor` of shape `[..., N, N]`. Only the lower triangular part of
+      each inner inner matrix is referenced.
+    b: `Tensor` of shape `[..., N, N]`. Only the lower triangular part of
+      each inner inner matrix is referenced. Must be positive-definite.
+    name: string, optional name of the operation.
+
+  Returns:
+    e: Eigenvalues. Shape is `[..., N]`.
+    v: Eigenvectors. Shape is `[..., N, N]`. The columns of the inner most
+      matrices contain eigenvectors of the corresponding matrices.
+  """
+  # pylint: disable=protected-access
+  e, v = gen_linalg_ops.generalized_self_adjoint_eig(
+    a, b, compute_v=True, name=name
+  )
+  v /= math_ops.sqrt(
+    math_ops.reduce_sum(v * math_ops.conj(v), axis=1, keep_dims=True)
+  )
+  return e, v
+
+
+def generalized_self_adjoint_eigvals(a, b, name=None):
+  """Computes the generalized eigenvalues of one or more self-adjoint matrices.
+
+  Args:
+    a: `Tensor` of shape `[..., N, N]`.
+    b: `Tensor` of shape `[..., N, N]`
+    name: string, optional name of the operation.
+
+  Returns:
+    e: Eigenvalues. Shape is `[..., N]`. The vector `e[..., :]` contains the `N`
+      eigenvalues of `tensor[..., :, :]`.
+  """
+  # pylint: disable=protected-access
+  e, _ = gen_linalg_ops.generalized_self_adjoint_eig(
+    a, b, compute_v=False, name=name
+  )
+  return e
+
+
+def eig(tensor, name=None):
+  """Computes the eigenvalues of one or morematrices.
+
+  Args:
+    tensor: `Tensor` of shape `[..., N, N]`.
+    name: string, optional name of the operation.
+
+  Returns:
+    e: Eigenvalues. Shape is `[..., N]`. The vector `e[..., :]` contains the `N`
+      eigenvalues of `tensor[..., :, :]`.
+  """
+  # pylint: disable=protected-access
+  e, v = gen_linalg_ops.complex_eig(tensor, compute_v=True, name=name)
+  return e, v
+
+
 def svd(tensor, full_matrices=False, compute_uv=True, name=None):
   """Computes the singular value decompositions of one or more matrices.
 
